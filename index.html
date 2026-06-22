@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#07091d" />
-  <meta name="description" content="Nova Block: Block Puzzle galactique avec Nova Pulse, combos et galaxie à construire." />
+  <meta name="theme-color" content="#edf9ff" />
+  <meta name="description" content="Nova Block: Block Puzzle galactique lumineux avec Nova Pulse, combos et galaxie à construire." />
   <title>Nova Block</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
@@ -22,7 +22,7 @@
         <div class="orb" aria-hidden="true"></div>
         <button id="startBtn" class="primary-btn">Jouer</button>
         <button id="homeOptionsBtn" class="ghost-btn">Options</button>
-        <p class="mini-note">Block Puzzle futuriste • PWA mobile • Hors ligne</p>
+        <p class="mini-note">Block Puzzle lumineux • PWA mobile • Hors ligne</p>
       </div>
     </section>
 
@@ -60,7 +60,7 @@
           <button id="pulseBtn" class="pulse-btn" disabled>Nova Pulse</button>
         </div>
         <div class="energy-bar" aria-hidden="true"><div id="energyFill"></div></div>
-        <p id="message" class="message">Sélectionne une pièce, puis touche la grille.</p>
+        <p id="message" class="message">Fais glisser un bloc vers la grille, ou touche un bloc puis une case.</p>
       </section>
 
       <section class="board-wrap">
@@ -68,6 +68,7 @@
       </section>
 
       <section class="pieces-panel" aria-label="Pièces disponibles">
+        <p class="pieces-help">Blocs disponibles</p>
         <div id="pieces" class="pieces"></div>
       </section>
 
@@ -106,7 +107,7 @@
         <h2 id="gameOverTitle">Ta galaxie Nova</h2>
         <p id="finalScore">Score : 0</p>
         <p id="finalStars">Étoiles créées : 0</p>
-        <p id="finalRank">Rang : Explorateur</p>
+        <p id="finalRank" class="rank-note">Rang : Explorateur</p>
         <button id="restartBtn" class="primary-btn">Rejouer</button>
         <button id="modalHomeBtn" class="ghost-btn">Accueil</button>
       </div>

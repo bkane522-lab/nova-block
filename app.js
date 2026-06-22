@@ -1,150 +1,147 @@
 const STORAGE = {
-  best: 'novaBlock.bestScore.v1',
-  sound: 'novaBlock.sound.v1',
-  vibration: 'novaBlock.vibration.v1',
-  tips: 'novaBlock.tips.v1'
+  best: 'novaBlockBest',
+  sound: 'novaBlockSound',
+  vibration: 'novaBlockVibration',
+  tips: 'novaBlockTips'
 };
 
-const boardEl = document.getElementById('board');
-const piecesEl = document.getElementById('pieces');
-const scoreValue = document.getElementById('scoreValue');
-const bestValue = document.getElementById('bestValue');
-const comboValue = document.getElementById('comboValue');
-const energyText = document.getElementById('energyText');
-const energyFill = document.getElementById('energyFill');
-const pulseBtn = document.getElementById('pulseBtn');
-const messageEl = document.getElementById('message');
-const starsCountEl = document.getElementById('starsCount');
-const miniGalaxy = document.getElementById('miniGalaxy');
-const modal = document.getElementById('gameOverModal');
-
-const screens = {
-  home: document.getElementById('homeScreen'),
-  game: document.getElementById('gameScreen'),
-  options: document.getElementById('optionsScreen')
-};
+const COLORS = [
+  ['#77e7ff', '#4fbdff', 'rgba(79,189,255,.30)'],
+  ['#8df3d2', '#39d9aa', 'rgba(57,217,170,.28)'],
+  ['#b08cff', '#7c67ff', 'rgba(124,103,255,.28)'],
+  ['#ffc58a', '#ff9f59', 'rgba(255,159,89,.26)'],
+  ['#ff9dd8', '#ff67d5', 'rgba(255,103,213,.26)']
+];
 
 const SHAPES = [
   [[1]],
   [[1,1]],
-  [[1],[1]],
   [[1,1,1]],
+  [[1],[1]],
   [[1],[1],[1]],
   [[1,1],[1,1]],
-  [[1,1,0],[0,1,1]],
-  [[0,1,1],[1,1,0]],
   [[1,0],[1,1]],
   [[0,1],[1,1]],
-  [[1,1],[1,0]],
-  [[1,1],[0,1]],
   [[1,1,1],[0,1,0]],
-  [[1,0,0],[1,1,1]],
-  [[0,0,1],[1,1,1]],
+  [[1,1,1],[1,0,0]],
+  [[1,1,1],[0,0,1]],
   [[1,1,1,1]],
   [[1],[1],[1],[1]],
-  [[1,1,1],[1,1,1]],
-  [[1,1,1],[1,0,0],[1,0,0]],
-  [[1,1,1],[0,0,1],[0,0,1]]
+  [[1,1,0],[0,1,1]],
+  [[0,1,1],[1,1,0]]
 ];
 
-const COLORS = [
-  ['#34f5ff', '#5b7cff', 'rgba(52,245,255,.65)'],
-  ['#ff4fe3', '#b24cff', 'rgba(255,79,227,.65)'],
-  ['#54ffb3', '#34f5ff', 'rgba(84,255,179,.65)'],
-  ['#ffe078', '#ff8d4f', 'rgba(255,224,120,.65)'],
-  ['#8d7cff', '#34f5ff', 'rgba(141,124,255,.65)']
-];
-
-let grid;
-let pieces;
+let grid = [];
+let pieces = [];
 let selectedPieceIndex = null;
 let score = 0;
-let bestScore = Number(localStorage.getItem(STORAGE.best) || 0);
+let bestScore = parseInt(localStorage.getItem(STORAGE.best) || '0', 10);
 let combo = 0;
-let energy = 0;
 let stars = 0;
+let energy = 0;
 let pulseMode = false;
-let settings = {
+let dragState = null;
+
+const settings = {
   sound: localStorage.getItem(STORAGE.sound) !== 'off',
   vibration: localStorage.getItem(STORAGE.vibration) !== 'off',
   tips: localStorage.getItem(STORAGE.tips) !== 'off'
 };
 
-let audioCtx = null;
+const homeScreen = document.getElementById('homeScreen');
+const gameScreen = document.getElementById('gameScreen');
+const optionsScreen = document.getElementById('optionsScreen');
+const modal = document.getElementById('gameOverModal');
+const boardEl = document.getElementById('board');
+const piecesEl = document.getElementById('pieces');
+const messageEl = document.getElementById('message');
+const scoreValue = document.getElementById('scoreValue');
+const bestValue = document.getElementById('bestValue');
+const comboValue = document.getElementById('comboValue');
+const energyText = document.getElementById('energyText');
+const energyFill = document.getElementById('energyFill');
+const starsCount = document.getElementById('starsCount');
+const miniGalaxy = document.getElementById('miniGalaxy');
+const pulseBtn = document.getElementById('pulseBtn');
 
 function showScreen(name) {
-  Object.values(screens).forEach(s => s.classList.remove('is-active'));
-  screens[name].classList.add('is-active');
-}
-
-function vibrate(ms = 24) {
-  if (settings.vibration && navigator.vibrate) navigator.vibrate(ms);
+  [homeScreen, gameScreen, optionsScreen].forEach(screen => screen.classList.remove('is-active'));
+  if (name === 'home') homeScreen.classList.add('is-active');
+  if (name === 'game') gameScreen.classList.add('is-active');
+  if (name === 'options') optionsScreen.classList.add('is-active');
+  if (name !== 'game') cancelDrag();
 }
 
 function sound(type = 'tap') {
   if (!settings.sound) return;
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    const now = audioCtx.currentTime;
-    const map = {
-      tap: [420, 0.04, 'sine'],
-      place: [620, 0.07, 'triangle'],
-      clear: [880, 0.13, 'sine'],
-      pulse: [160, 0.22, 'sawtooth'],
-      fail: [120, 0.12, 'square']
-    };
-    const [freq, dur, wave] = map[type] || map.tap;
-    osc.type = wave;
-    osc.frequency.setValueAtTime(freq, now);
-    if (type === 'pulse') osc.frequency.exponentialRampToValueAtTime(620, now + dur);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    const audio = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    const base = { tap: 460, place: 600, clear: 760, fail: 180, pulse: 900 }[type] || 420;
+    osc.type = type === 'fail' ? 'square' : 'sine';
+    osc.frequency.value = base;
+    gain.gain.value = .035;
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + dur + 0.02);
+    gain.connect(audio.destination);
+    osc.start();
+    osc.frequency.exponentialRampToValueAtTime(base * (type === 'clear' ? 1.2 : 0.8), audio.currentTime + .08);
+    gain.gain.exponentialRampToValueAtTime(.0001, audio.currentTime + .13);
+    osc.stop(audio.currentTime + .14);
   } catch (e) {}
 }
 
+function vibrate(ms = 16) {
+  if (settings.vibration && navigator.vibrate) navigator.vibrate(ms);
+}
+
+function createEmptyGrid() {
+  return Array.from({ length: 8 }, () => Array(8).fill(null));
+}
+
+function generatePieces() {
+  const list = [];
+  while (list.length < 3) {
+    const shape = JSON.parse(JSON.stringify(SHAPES[Math.floor(Math.random() * SHAPES.length)]));
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    list.push({ shape, color, used: false });
+  }
+  return list;
+}
+
 function newGame() {
-  grid = Array.from({ length: 8 }, () => Array(8).fill(null));
+  grid = createEmptyGrid();
   pieces = generatePieces();
   selectedPieceIndex = null;
   score = 0;
   combo = 0;
-  energy = 0;
   stars = 0;
+  energy = 0;
   pulseMode = false;
+  cancelDrag();
   modal.classList.remove('is-active');
-  setMessage('Sélectionne une pièce, puis touche la grille.');
+  setMessage('Fais glisser un bloc vers la grille, ou touche un bloc puis une case.');
   render();
-}
-
-function generatePieces() {
-  return Array.from({ length: 3 }, () => {
-    const shape = cloneShape(SHAPES[Math.floor(Math.random() * SHAPES.length)]);
-    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-    return { shape, color, used: false };
-  });
-}
-
-function cloneShape(shape) {
-  return shape.map(row => [...row]);
 }
 
 function render() {
   scoreValue.textContent = score;
   bestValue.textContent = bestScore;
   comboValue.textContent = `x${combo}`;
-  energyText.textContent = `${Math.floor(energy)}%`;
+  energyText.textContent = `${Math.round(energy)}%`;
   energyFill.style.width = `${Math.min(100, energy)}%`;
+  starsCount.textContent = `${stars} ${stars > 1 ? 'étoiles' : 'étoile'}`;
   pulseBtn.disabled = energy < 100;
-  pulseBtn.textContent = pulseMode ? 'Choisis zone' : 'Nova Pulse';
-  starsCountEl.textContent = `${stars} étoile${stars > 1 ? 's' : ''}`;
-  renderBoard();
+  pulseBtn.textContent = pulseMode ? 'Annuler Pulse' : 'Nova Pulse';
+
+  let preview = [];
+  let badPreview = false;
+  if (dragState && dragState.boardCell && pieces[dragState.pieceIndex] && !pieces[dragState.pieceIndex].used) {
+    const piece = pieces[dragState.pieceIndex];
+    preview = getPreviewCells(piece.shape, dragState.boardCell.row, dragState.boardCell.col);
+    badPreview = !canPlace(piece.shape, dragState.boardCell.row, dragState.boardCell.col);
+  }
+  renderBoard(preview, badPreview);
   renderPieces();
   renderGalaxy();
 }
@@ -156,6 +153,8 @@ function renderBoard(previewCells = [], badPreview = false) {
       const cell = document.createElement('button');
       cell.className = 'cell';
       cell.type = 'button';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
       cell.setAttribute('aria-label', `Case ${r + 1}-${c + 1}`);
       const data = grid[r][c];
       if (data) {
@@ -179,16 +178,19 @@ function renderPieces() {
     const card = document.createElement('button');
     card.className = 'piece-card';
     card.type = 'button';
+    card.dataset.index = idx;
     if (idx === selectedPieceIndex) card.classList.add('selected');
     if (piece.used) card.classList.add('used');
+    if (dragState && dragState.pieceIndex === idx) card.classList.add('dragging');
     card.addEventListener('click', () => selectPiece(idx));
+    bindDragEvents(card, idx);
 
     const rows = piece.shape.length;
     const cols = Math.max(...piece.shape.map(row => row.length));
     const mini = document.createElement('div');
     mini.className = 'piece-grid';
-    mini.style.gridTemplateColumns = `repeat(${cols}, 16px)`;
-    mini.style.gridTemplateRows = `repeat(${rows}, 16px)`;
+    mini.style.gridTemplateColumns = `repeat(${cols}, 14px)`;
+    mini.style.gridTemplateRows = `repeat(${rows}, 14px)`;
 
     piece.shape.forEach(row => {
       for (let c = 0; c < cols; c++) {
@@ -235,7 +237,7 @@ function selectPiece(idx) {
   selectedPieceIndex = idx;
   sound('tap');
   vibrate(12);
-  setMessage('Maintenant touche la grille pour poser le bloc.');
+  setMessage('Bloc sélectionné. Touche une case de la grille, ou fais-le glisser.');
   render();
 }
 
@@ -247,17 +249,28 @@ function onBoardTap(row, col) {
   if (selectedPieceIndex === null || pieces[selectedPieceIndex].used) {
     setMessage('Choisis d’abord une pièce en bas.');
     sound('fail');
-    vibrate(60);
+    vibrate(50);
     return;
   }
   const piece = pieces[selectedPieceIndex];
   if (!canPlace(piece.shape, row, col)) {
     setMessage('Placement impossible ici. Essaie une autre case.');
     sound('fail');
-    vibrate(70);
+    vibrate(55);
     return;
   }
-  placePiece(piece, row, col);
+  placePiece(selectedPieceIndex, row, col);
+}
+
+function getPreviewCells(shape, row, col) {
+  const cells = [];
+  for (let r = 0; r < shape.length; r++) {
+    for (let c = 0; c < shape[r].length; c++) {
+      if (!shape[r][c]) continue;
+      cells.push({ r: row + r, c: col + c });
+    }
+  }
+  return cells.filter(p => p.r >= 0 && p.r < 8 && p.c >= 0 && p.c < 8);
 }
 
 function canPlace(shape, row, col) {
@@ -272,7 +285,8 @@ function canPlace(shape, row, col) {
   return true;
 }
 
-function placePiece(piece, row, col) {
+function placePiece(pieceIndex, row, col) {
+  const piece = pieces[pieceIndex];
   let cells = 0;
   for (let r = 0; r < piece.shape.length; r++) {
     for (let c = 0; c < piece.shape[r].length; c++) {
@@ -281,7 +295,7 @@ function placePiece(piece, row, col) {
       cells++;
     }
   }
-  pieces[selectedPieceIndex].used = true;
+  pieces[pieceIndex].used = true;
   selectedPieceIndex = null;
   score += cells * 10;
   energy = Math.min(100, energy + cells * 3);
@@ -298,7 +312,7 @@ function placePiece(piece, row, col) {
     stars += starGain;
     setMessage(`Combo x${combo} ! +${gained} points, +${starGain} étoiles.`);
     sound('clear');
-    vibrate(40);
+    vibrate(38);
   } else {
     combo = 0;
     if (settings.tips && energy >= 100) setMessage('Nova Pulse prêt : utilise-le pour libérer de la place.');
@@ -312,7 +326,6 @@ function placePiece(piece, row, col) {
 
   if (pieces.every(p => p.used)) pieces = generatePieces();
   render();
-
   if (!hasAnyMove()) endGame();
 }
 
@@ -329,12 +342,8 @@ function clearLines() {
     }
     if (full) cols.push(c);
   }
-  rows.forEach(r => {
-    for (let c = 0; c < 8; c++) grid[r][c] = null;
-  });
-  cols.forEach(c => {
-    for (let r = 0; r < 8; r++) grid[r][c] = null;
-  });
+  rows.forEach(r => { for (let c = 0; c < 8; c++) grid[r][c] = null; });
+  cols.forEach(c => { for (let r = 0; r < 8; r++) grid[r][c] = null; });
   return rows.length + cols.length;
 }
 
@@ -435,16 +444,117 @@ function bindButtons() {
     if (energy < 100) return;
     pulseMode = !pulseMode;
     selectedPieceIndex = null;
+    cancelDrag();
     sound('tap');
     setMessage(pulseMode ? 'Touche une zone de la grille pour déclencher Nova Pulse.' : 'Nova Pulse annulé.');
     render();
   });
 }
 
+function bindDragEvents(card, idx) {
+  card.addEventListener('pointerdown', (e) => startDrag(e, idx, card));
+}
+
+function startDrag(e, idx, card) {
+  if (pieces[idx].used) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  pulseMode = false;
+  selectedPieceIndex = idx;
+  const ghost = buildGhost(pieces[idx]);
+  document.body.appendChild(ghost);
+  dragState = { pieceIndex: idx, ghost, pointerId: e.pointerId, boardCell: null };
+  updateGhostPosition(e.clientX, e.clientY);
+  updateBoardHover(e.clientX, e.clientY);
+  if (card.setPointerCapture) card.setPointerCapture(e.pointerId);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+  setMessage('Fais glisser le bloc sur la grille puis relâche.');
+  render();
+}
+
+function buildGhost(piece) {
+  const rows = piece.shape.length;
+  const cols = Math.max(...piece.shape.map(row => row.length));
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  const mini = document.createElement('div');
+  mini.className = 'piece-grid';
+  mini.style.gridTemplateColumns = `repeat(${cols}, 18px)`;
+  mini.style.gridTemplateRows = `repeat(${rows}, 18px)`;
+  piece.shape.forEach(row => {
+    for (let c = 0; c < cols; c++) {
+      const dot = document.createElement('span');
+      dot.className = 'mini-cell';
+      dot.style.width = '18px';
+      dot.style.height = '18px';
+      if (row[c]) {
+        dot.classList.add('on');
+        dot.style.setProperty('--block-a', piece.color[0]);
+        dot.style.setProperty('--block-b', piece.color[1]);
+        dot.style.setProperty('--glow', piece.color[2]);
+      }
+      mini.appendChild(dot);
+    }
+  });
+  ghost.appendChild(mini);
+  return ghost;
+}
+
+function updateGhostPosition(x, y) {
+  if (!dragState?.ghost) return;
+  dragState.ghost.style.left = `${x}px`;
+  dragState.ghost.style.top = `${y}px`;
+}
+
+function getBoardCellFromPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const cell = el?.closest('.cell');
+  if (!cell) return null;
+  return {
+    row: parseInt(cell.dataset.row, 10),
+    col: parseInt(cell.dataset.col, 10)
+  };
+}
+
+function updateBoardHover(x, y) {
+  if (!dragState) return;
+  dragState.boardCell = getBoardCellFromPoint(x, y);
+  render();
+}
+
+function onPointerMove(e) {
+  if (!dragState) return;
+  updateGhostPosition(e.clientX, e.clientY);
+  updateBoardHover(e.clientX, e.clientY);
+}
+
+function onPointerUp(e) {
+  if (!dragState) return;
+  const pieceIndex = dragState.pieceIndex;
+  const boardCell = getBoardCellFromPoint(e.clientX, e.clientY) || dragState.boardCell;
+  const canDrop = boardCell && canPlace(pieces[pieceIndex].shape, boardCell.row, boardCell.col);
+  cancelDrag();
+  if (canDrop) {
+    placePiece(pieceIndex, boardCell.row, boardCell.col);
+  } else {
+    setMessage('Bloc relâché hors zone valable. Réessaie.');
+    render();
+  }
+}
+
+function cancelDrag() {
+  if (dragState?.ghost && dragState.ghost.parentNode) dragState.ghost.parentNode.removeChild(dragState.ghost);
+  dragState = null;
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
+  window.removeEventListener('pointercancel', onPointerUp);
+}
+
 function boot() {
   initOptions();
   bindButtons();
-  grid = Array.from({ length: 8 }, () => Array(8).fill(null));
+  grid = createEmptyGrid();
   pieces = generatePieces();
   bestValue.textContent = bestScore;
   render();
